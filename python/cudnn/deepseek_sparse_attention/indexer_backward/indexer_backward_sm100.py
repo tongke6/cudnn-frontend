@@ -399,10 +399,12 @@ class IndexerBackwardSm100:
         block_I=128,
         topk=512,
         total_seqlen_k: int | None = None,
-        total_rows: int = 1,
+        total_rows: int | None = 1,
         persistent_grid_size: int = 1,
         topk_indices_global: bool = True,
         enable_score_pdl: bool = False,
+        dynamic_shape: bool = False,
+        persistent_override: bool | None = None,
     ):
         self.head_dim = head_dim
         self.heads = heads
@@ -416,6 +418,9 @@ class IndexerBackwardSm100:
         # ``gemm_only`` calls compile a non-PDL variant to preserve arbitrary
         # stream-predecessor semantics.
         self.enable_score_pdl = enable_score_pdl
+        self.dynamic_shape = dynamic_shape
+        if dynamic_shape != (persistent_override is not None):
+            raise ValueError("dynamic_shape requires an explicit persistent scheduling choice")
         # When True (default, matches the public fwd convention), mTopkIdx
         # carries global KV ids (``b * seqlen_k + local``); the kernel uses
         # them as flat ids into the (B*S_k, D) K/dK view directly. When
@@ -433,16 +438,11 @@ class IndexerBackwardSm100:
         # H64 x I128 fragment map. Larger TopK values retain the full-dS drain
         # order because the additional barrier traffic regresses them.
         self.use_ds_half = topk == 512 and self.heads_padded == 64 and block_I == 128
-        self.use_persistent = (
-            topk in (128, 256, 384, 512)
-            and self.heads_padded == 64
-            and self.head_dim_padded == 128
-            and block_I == 128
-            # For the new short-row variants, at most one row per resident CTA
-            # leaves nothing to amortize and is 1-5% slower.  Preserve the
-            # established TopK=512 dispatch policy unchanged.
-            and (topk == 512 or total_rows > persistent_grid_size)
-        )
+        persistent_eligible = topk in (128, 256, 384, 512) and self.heads_padded == 64 and self.head_dim_padded == 128 and block_I == 128
+        # The public dynamic path chooses between two bounded code variants at
+        # launch time. Both use the actual runtime row count for loop bounds.
+        # Direct static callers retain the original dispatch policy.
+        self.use_persistent = persistent_eligible and (persistent_override if dynamic_shape else (topk == 512 or total_rows > persistent_grid_size))
         # Gather4 consumes explicit row coordinates, so local IDs can be
         # range-checked and normalized to flat global IDs in registers before
         # issue. This preserves the local-ID OOB contract without a separate
@@ -451,6 +451,8 @@ class IndexerBackwardSm100:
         # needed to construct a Gather4 descriptor. Keep those wheels on the
         # existing manual cp.async loader; both paths feed identical BF16 K
         # tiles into the same FP32 GEMMs.
+        # The descriptor extent comes from mK at launch, not from the plan's
+        # compile key. Gather4 can therefore serve dynamic packed shapes.
         self.use_tma_gather = _HAS_TMA_GATHER4
         self.use_cross_row_persistent = self.use_persistent and self.use_tma_gather
 
@@ -510,6 +512,7 @@ class IndexerBackwardSm100:
         mGradSignal: cute.Tensor,
         mTopkIdx: cute.Tensor,
         sm_scale: Float32 | float,
+        persistent_grid_rows: Int32,
         stream: cuda.CUstream,
     ):
         self.q_dtype = mQ.element_type
@@ -624,14 +627,14 @@ class IndexerBackwardSm100:
             gI_desc = cute.make_tensor(
                 mTopkIdx.iterator,
                 cute.make_layout(
-                    (self.total_seqlen_k, self.head_dim_padded),
+                    (cute.size(mK.shape[0]), self.head_dim_padded),
                     stride=(1, 0),
                 ),
             )
             mK_gather = cute.make_tensor(
                 mK.iterator,
                 cute.make_layout(
-                    (self.total_seqlen_k, self.head_dim_padded),
+                    (cute.size(mK.shape[0]), self.head_dim_padded),
                     stride=(self.head_dim_padded, 1),
                 ),
             )
@@ -664,9 +667,9 @@ class IndexerBackwardSm100:
 
         seqlen = cute.size(mQ.shape[0])
         batch_size = cute.size(mQ.shape[3]) if cute.rank(mQ.shape) > 3 else 1
+        total_rows = seqlen * batch_size
 
-        grid_rows = min(self.total_rows, self.persistent_grid_size) if self.use_persistent else self.total_rows
-        launch_grid = (grid_rows, 1, 1) if self.use_persistent else (seqlen, batch_size, 1)
+        launch_grid = (persistent_grid_rows, 1, 1) if self.use_persistent else (seqlen, batch_size, 1)
         self.kernel_gemm(
             mQ_tma,
             mW,
@@ -693,6 +696,7 @@ class IndexerBackwardSm100:
             sdQ_epi_layout,
             seqlen,
             batch_size,
+            total_rows,
         ).launch(
             grid=launch_grid,
             block=[self.THREADS_PER_CTA, 1, 1],
@@ -730,6 +734,7 @@ class IndexerBackwardSm100:
         sdQ_epi_layout,
         seqlen: Int32,
         batch_size: Int32,
+        total_rows: Int32,
     ):
         # ScoreGrad launches this grid programmatically.  Serial rows wait at
         # entry; the cross-row persistent path delays the wait until its load
@@ -869,6 +874,7 @@ class IndexerBackwardSm100:
                 seqlen,
                 batch_size,
                 seqlen_k,
+                total_rows,
                 flat_row_idx,
                 tidx,
                 warp_idx,
@@ -1168,13 +1174,13 @@ class IndexerBackwardSm100:
             cute.arch.setmaxregister_decrease(self.num_regs_wg0)
 
         if const_expr(self.use_persistent):
-            # The local-id fallback fully drains each row before reusing the
+            # The manual K-load fallback fully drains each row before reusing the
             # single operand set; TMEM remains allocated across rows.
             cute.arch.sync_threads()
             row_stride = cute.arch.grid_dim()[0]
             for next_flat_row in cutlass.range(
                 flat_row_idx + row_stride,
-                self.total_rows,
+                total_rows,
                 row_stride,
             ):
                 next_batch_idx = next_flat_row // seqlen
@@ -1303,6 +1309,7 @@ class IndexerBackwardSm100:
         seqlen,
         batch_size,
         seqlen_k,
+        total_rows,
         first_flat_row,
         tidx,
         warp_idx,
@@ -1409,7 +1416,7 @@ class IndexerBackwardSm100:
             lane_id = tidx % self.WARP_SIZE
             for row in cutlass.range(
                 first_flat_row,
-                self.total_rows,
+                total_rows,
                 row_stride,
             ):
                 it = (row - first_flat_row) // row_stride
@@ -1517,7 +1524,7 @@ class IndexerBackwardSm100:
             )
             for row in cutlass.range(
                 first_flat_row,
-                self.total_rows,
+                total_rows,
                 row_stride,
             ):
                 it = (row - first_flat_row) // row_stride
@@ -1613,7 +1620,7 @@ class IndexerBackwardSm100:
             sdQ_epi_slice = sdQ_epi[None, None, 0]
             for row in cutlass.range(
                 first_flat_row,
-                self.total_rows,
+                total_rows,
                 row_stride,
             ):
                 it = (row - first_flat_row) // row_stride
@@ -1673,7 +1680,7 @@ class IndexerBackwardSm100:
                     mbar + MBAR_ROW_FREE_0 + parity,
                 )
 
-            last_it = (self.total_rows - 1 - first_flat_row) // row_stride
+            last_it = (total_rows - 1 - first_flat_row) // row_stride
             last_parity = last_it & 1
             cute.arch.mbarrier_wait(
                 mbar + MBAR_ROW_FREE_0 + last_parity,
@@ -1688,7 +1695,7 @@ class IndexerBackwardSm100:
             cute.arch.setmaxregister_decrease(self.num_regs_kload)
             for row in cutlass.range(
                 first_flat_row,
-                self.total_rows,
+                total_rows,
                 row_stride,
             ):
                 it = (row - first_flat_row) // row_stride
@@ -1739,7 +1746,7 @@ class IndexerBackwardSm100:
             )
             for row in cutlass.range(
                 first_flat_row,
-                self.total_rows,
+                total_rows,
                 row_stride,
             ):
                 it = (row - first_flat_row) // row_stride
@@ -3407,9 +3414,8 @@ class IndexerBackwardSm100:
 # =============================================================================
 # compile_key -> compiled GEMM kernel. Single-layer cache, same pattern as the
 # forward ``_interface.py`` and ``_score_grad_cute_cache`` below: the key holds
-# only params that change the generated code, and entries are filled lazily on
-# first execute (``_ensure_compiled``) because ``cute.compile`` needs the real
-# tensors that the shape-only factory call doesn't have yet.
+# only params that change the generated code. Symbolic compact tensors keep
+# packed row and key extents dynamic during compilation.
 _compile_cache: dict = {}
 
 
@@ -3424,8 +3430,9 @@ def indexer_backward_sm100(
     block_I=128,
     topk_indices_global: bool = True,
 ):
-    # ``batch``/``seqlen``/``seqlen_k`` specialize the persistent-row schedule
-    # and Gather4 descriptor extent, so they are part of the GEMM compile key.
+    # ``batch``/``seqlen``/``seqlen_k`` affect the launch grid and row/K bounds
+    # at runtime, but do not change the compiled GEMM artifact. Packed totals
+    # differ by rank and by training step.
     # ``grad_scale`` remains runtime-only (forwarded into ``score_grad`` as a
     # ``Float32`` at call time), so changing loss scaling does not recompile.
     #
@@ -3434,8 +3441,9 @@ def indexer_backward_sm100(
     #   False:           mTopkIdx carries local-per-batch ids — kernel checks
     #                    the per-batch bound and adds ``batch_idx * S_k`` in
     #                    registers for the flat (B*S_k, D) K/dK view.
-    # Both conventions use Gather4 when the installed DSL supports it.
-    # Const_expr-branched in the kernel, so it **is** part of the compile key.
+    # Gather4's descriptor binds the runtime K extent; older DSL builds use
+    # the manual K loader. The ID convention is const_expr-branched, so it
+    # **is** part of the compile key.
     # THD packed varlen is supported at the wrapper level by treating the
     # packed tensors as a single B=1 BSHD batch (sparse path's topk indices
     # already encode per-batch validity, so no kernel-side cu_seqlens are
@@ -3798,33 +3806,57 @@ def _build_cute_dsl_kernel(
     block_I,
     topk_indices_global: bool = True,
 ):
-    from cudnn.deepseek_sparse_attention.utils.tensor_conversion import to_cute_tensor
-
-    if torch.cuda.get_device_capability()[0] < 10:
+    device_capability = torch.cuda.get_device_capability()
+    if device_capability[0] < 10:
         raise RuntimeError("Requires SM100+")
     persistent_grid_size = torch.cuda.get_device_properties(torch.cuda.current_device()).multi_processor_count
 
-    def _make_kernel(enable_score_pdl: bool):
+    def _persistent_for_rows(total_rows: int) -> bool:
+        return topk in (128, 256, 384, 512) and heads == 64 and dim == 128 and block_I == 128 and (topk == 512 or total_rows > persistent_grid_size)
+
+    def _make_kernel(enable_score_pdl: bool, use_persistent: bool):
         return IndexerBackwardSm100(
             head_dim=dim,
             heads=heads,
             block_I=block_I,
             topk=topk,
-            total_seqlen_k=batch * seqlen_k,
-            total_rows=batch * seqlen,
+            total_seqlen_k=None,
+            total_rows=None,
             persistent_grid_size=persistent_grid_size,
             topk_indices_global=topk_indices_global,
             enable_score_pdl=enable_score_pdl,
+            dynamic_shape=True,
+            persistent_override=use_persistent,
         )
 
-    kernel_objects = {
-        False: _make_kernel(False),
-        True: _make_kernel(True),
-    }
+    # One symbolic extent per logical runtime dimension. Reuse the same
+    # symbols across inputs and outputs so no packed total or derived stride
+    # leaks into the compiler's specialization key.
+    batch_extent = cute.sym_int()
+    query_extent = cute.sym_int()
+    key_extent = cute.sym_int()
+
+    def _fake_tensor(dtype, shape):
+        return cute.runtime.make_fake_compact_tensor(
+            dtype,
+            shape,
+            stride_order=tuple(reversed(range(len(shape)))),
+            assumed_align=16,
+        )
+
+    fake_args = (
+        _fake_tensor(cutlass.BFloat16, (batch_extent, query_extent, heads, dim)),
+        _fake_tensor(cutlass.BFloat16, (batch_extent, query_extent, heads)),
+        _fake_tensor(cutlass.BFloat16, (batch_extent, key_extent, dim)),
+        _fake_tensor(cutlass.BFloat16, (batch_extent, query_extent, heads, dim)),
+        _fake_tensor(cutlass.BFloat16, (batch_extent, query_extent, heads)),
+        _fake_tensor(cutlass.Float32, (batch_extent, key_extent, dim)),
+        _fake_tensor(cutlass.Float32, (batch_extent, query_extent, topk)),
+        _fake_tensor(cutlass.Int32, (batch_extent, query_extent, topk)),
+    )
+    fake_stream = cute.runtime.make_fake_stream(use_tvm_ffi_env_stream=False)
     compile_key_base = (
-        batch,
-        seqlen,
-        seqlen_k,
+        device_capability,
         heads,
         dim,
         topk,
@@ -3832,17 +3864,16 @@ def _build_cute_dsl_kernel(
         topk_indices_global,
     )
 
-    def _ensure_compiled(IndexQ, Weights, IndexK, dIndexQ, dWeights, dIndexK_f32, AttnScore, TopkIndices, enable_score_pdl: bool, current_stream=None):
-        """Lazy-compile the GEMM kernel (kernel 2)."""
-        compile_key = (*compile_key_base, enable_score_pdl)
+    def _ensure_compiled(enable_score_pdl: bool, use_persistent: bool):
+        """Compile a finite code variant, independent of the packed extents."""
+        compile_key = (*compile_key_base, enable_score_pdl, use_persistent)
         if compile_key not in _compile_cache:
-            s = _resolve_stream(current_stream)
-            cute_args = [to_cute_tensor(t) for t in [IndexQ, Weights, IndexK, dIndexQ, dWeights, dIndexK_f32, AttnScore, TopkIndices]]
             _compile_cache[compile_key] = cute.compile(
-                kernel_objects[enable_score_pdl],
-                *cute_args,
+                _make_kernel(enable_score_pdl, use_persistent),
+                *fake_args,
                 cutlass.Float32(sm_scale),
-                s,
+                cutlass.Int32(1),
+                fake_stream,
                 options=compile_options("--opt-level 2"),
             )
 
@@ -3859,8 +3890,10 @@ def _build_cute_dsl_kernel(
         current_stream=None,
     ):
         s = _resolve_stream(current_stream)
-        compile_key = (*compile_key_base, enable_score_pdl)
-        _ensure_compiled(IndexQ, Weights, IndexK, dIndexQ, dWeights, dIndexK_f32, GradSignal, TopkIndices, enable_score_pdl, current_stream=current_stream)
+        total_rows = IndexQ.shape[0] * IndexQ.shape[1]
+        use_persistent = _persistent_for_rows(total_rows)
+        compile_key = (*compile_key_base, enable_score_pdl, use_persistent)
+        _ensure_compiled(enable_score_pdl, use_persistent)
         with torch.cuda.nvtx.range("indexer_backward_dsl_gemm"):
             _compile_cache[compile_key](
                 IndexQ,
@@ -3872,6 +3905,7 @@ def _build_cute_dsl_kernel(
                 GradSignal,
                 TopkIndices,
                 cutlass.Float32(sm_scale),
+                cutlass.Int32(min(total_rows, persistent_grid_size) if use_persistent else 1),
                 s,
             )
 
@@ -3976,5 +4010,6 @@ def _build_cute_dsl_kernel(
     _run.score_grad_zero = partial(_score_grad_inplace, block_I=block_I)
     _run.gemm_only = _run_gemm_only
     _run.gemm_after_score = _run_gemm_after_score
+    _run.precompile = lambda: _ensure_compiled(True, _persistent_for_rows(batch * seqlen))
 
     return _run

@@ -2237,7 +2237,7 @@ def test_DSA_indexer_backward_sm100_persistent_short_topk_dispatch_threshold():
     except ImportError:
         pytest.skip("Environment not supported: cudnn[cutedsl] not installed")
 
-    sm_count = torch.cuda.get_device_properties(0).multi_processor_count
+    sm_count = torch.cuda.get_device_properties(torch.cuda.current_device()).multi_processor_count
     for topk in (128, 256, 384):
         short = IndexerBackwardSm100(
             128,
@@ -2356,7 +2356,7 @@ def test_DSA_indexer_backward_sm100_score_grad_packed_rows_and_fused_dk_zero(top
 
 
 @pytest.mark.L1
-@pytest.mark.parametrize("topk", [128, 256, 384])
+@pytest.mark.parametrize("topk", [128, 256, 384, 512])
 def test_DSA_indexer_backward_sm100_score_grad_pdl_full_pipeline_matches_serial(topk):
     """PDL prologue overlap remains ordered across back-to-back calls."""
     if torch.cuda.get_device_capability()[0] < 10:
@@ -2393,8 +2393,9 @@ def test_DSA_indexer_backward_sm100_score_grad_pdl_full_pipeline_matches_serial(
         block_I=128,
         topk_indices_global=True,
     )
-    d_index_q_ref = torch.empty_like(index_q)
-    d_weights_ref = torch.empty_like(weights)
+    # A missed persistent row stays NaN and fails deterministically.
+    d_index_q_ref = torch.full_like(index_q, float("nan"))
+    d_weights_ref = torch.full_like(weights, float("nan"))
     d_index_k_ref_f32 = torch.zeros_like(index_k, dtype=torch.float32)
     kernel.gemm_only(
         index_q,
@@ -2408,9 +2409,9 @@ def test_DSA_indexer_backward_sm100_score_grad_pdl_full_pipeline_matches_serial(
     )
     d_index_k_ref = d_index_k_ref_f32.to(torch.bfloat16)
 
-    d_index_q = torch.empty_like(index_q)
-    d_weights = torch.empty_like(weights)
-    d_index_k = torch.empty_like(index_k)
+    d_index_q = torch.full_like(index_q, float("nan"))
+    d_weights = torch.full_like(weights, float("nan"))
+    d_index_k = torch.full_like(index_k, float("nan"))
     for _ in range(2):
         kernel(
             index_q,
@@ -2434,6 +2435,171 @@ def test_DSA_indexer_backward_sm100_score_grad_pdl_full_pipeline_matches_serial(
     ):
         assert torch.isfinite(actual.float()).all(), f"{name} contains NaN/Inf"
         torch.testing.assert_close(actual, expected, rtol=1e-2, atol=1e-2, msg=lambda msg, name=name: f"{name}: {msg}")
+
+
+@pytest.mark.L1
+@pytest.mark.parametrize("topk", [128, 512, 640])
+def test_DSA_indexer_backward_sm100_dynamic_shapes_reuse_compilation(topk):
+    """Changing packed extents rebinds the same bounded GEMM variants."""
+    if torch.cuda.get_device_capability()[0] < 10:
+        pytest.skip("SM100+ required")
+
+    try:
+        module = importlib.import_module("cudnn.deepseek_sparse_attention.indexer_backward.indexer_backward_sm100")
+    except ImportError:
+        pytest.skip("Environment not supported: cudnn[cutedsl] not installed")
+
+    sm_count = torch.cuda.get_device_properties(0).multi_processor_count
+    if module._HAS_TMA_GATHER4:
+        dynamic_kernel = module.IndexerBackwardSm100(
+            head_dim=128,
+            heads=64,
+            block_I=128,
+            topk=topk,
+            total_seqlen_k=None,
+            total_rows=None,
+            persistent_grid_size=sm_count,
+            dynamic_shape=True,
+            persistent_override=topk in (128, 512),
+        )
+        assert dynamic_kernel.use_tma_gather
+        if topk == 512:
+            assert dynamic_kernel.use_cross_row_persistent
+    shapes = [(17, 768), (sm_count + 5, 1024), (sm_count + 11, 1280)]
+    expected_variants = 2 if topk == 128 else 1
+    generator = torch.Generator(device="cuda").manual_seed(20260923 + topk)
+    module._compile_cache.clear()
+    try:
+        for seqlen_q, seqlen_k in shapes:
+            index_q = torch.randn((1, seqlen_q, 64, 128), device="cuda", dtype=torch.bfloat16, generator=generator)
+            weights = torch.randn((1, seqlen_q, 64), device="cuda", dtype=torch.bfloat16, generator=generator).abs().mul_(0.1)
+            index_k = torch.randn((1, seqlen_k, 128), device="cuda", dtype=torch.bfloat16, generator=generator)
+            topk_indices = torch.randint(0, seqlen_k, (1, seqlen_q, topk), device="cuda", dtype=torch.int32, generator=generator)
+            topk_indices[:, ::13, ::17] = -1
+            grad_signal = torch.randn((1, seqlen_q, topk), device="cuda", dtype=torch.float32, generator=generator)
+            d_index_q = torch.full_like(index_q, float("nan"))
+            d_weights = torch.full_like(weights, float("nan"))
+            d_index_k = torch.zeros_like(index_k, dtype=torch.float32)
+
+            kernel = module.indexer_backward_sm100(1, seqlen_q, seqlen_k, 64, 128, topk)
+            kernel.gemm_only(index_q, weights, index_k, d_index_q, d_weights, d_index_k, grad_signal, topk_indices)
+            torch.cuda.synchronize()
+
+            oracle_dq, oracle_dw, oracle_dk = _fp64_oracle(index_q, weights, index_k, grad_signal, topk_indices)
+            for name, actual, oracle in (
+                ("dQ", d_index_q, oracle_dq),
+                ("dW", d_weights, oracle_dw),
+                ("dK", d_index_k, oracle_dk),
+            ):
+                assert torch.isfinite(actual.float()).all(), f"{name} contains NaN/Inf at Sq={seqlen_q}, Sk={seqlen_k}"
+                assert _rms_rel(actual, oracle) <= 0.02, f"{name} mismatch at Sq={seqlen_q}, Sk={seqlen_k}"
+            assert len(module._compile_cache) == (1 if topk != 128 or seqlen_q <= sm_count else expected_variants)
+    finally:
+        module._compile_cache.clear()
+
+
+@pytest.mark.L1
+def test_DSA_indexer_backward_sm100_plan_compiles_shape_generic_gemm():
+    """Plan compilation, not the first execute, builds a reusable GEMM."""
+    _require_sm100()
+    DSA, _ = _import_dsa()
+    try:
+        module = importlib.import_module("cudnn.deepseek_sparse_attention.indexer_backward.indexer_backward_sm100")
+    except ImportError:
+        pytest.skip("Environment not supported: cudnn[cutedsl] not installed")
+
+    module._compile_cache.clear()
+    try:
+        for seqlen_q, seqlen_k in ((17, 768), (29, 1024)):
+            index_q = torch.empty((1, seqlen_q, 64, 128), device="cuda", dtype=torch.bfloat16)
+            weights = torch.empty((1, seqlen_q, 64), device="cuda", dtype=torch.bfloat16)
+            index_k = torch.empty((1, seqlen_k, 128), device="cuda", dtype=torch.bfloat16)
+            score = torch.empty((1, seqlen_q, 512), device="cuda", dtype=torch.float32)
+            topk_indices = torch.empty((1, seqlen_q, 512), device="cuda", dtype=torch.int32)
+            plan = DSA.IndexerBackward(
+                sample_index_q=index_q,
+                sample_weights=weights,
+                sample_index_k=index_k,
+                sample_d_index_q=torch.empty_like(index_q),
+                sample_d_weights=torch.empty_like(weights),
+                sample_d_index_k=torch.empty_like(index_k),
+                sample_attn_score=score,
+                sample_index_score=score,
+                sample_topk_indices=topk_indices,
+                sm_scale=1.0,
+                block_I=128,
+            )
+            assert plan.check_support()
+            plan.compile()
+            assert len(module._compile_cache) == 1
+    finally:
+        module._compile_cache.clear()
+
+
+@pytest.mark.L1
+def test_DSA_indexer_backward_sm100_dynamic_shapes_cudagraph_reuse(monkeypatch):
+    """A new packed shape can capture and replay without compiling another GEMM."""
+    if torch.cuda.get_device_capability()[0] < 10:
+        pytest.skip("SM100+ required")
+
+    try:
+        module = importlib.import_module("cudnn.deepseek_sparse_attention.indexer_backward.indexer_backward_sm100")
+    except ImportError:
+        pytest.skip("Environment not supported: cudnn[cutedsl] not installed")
+
+    device = torch.device("cuda")
+    generator = torch.Generator(device=device).manual_seed(20260929)
+    module._compile_cache.clear()
+
+    def fail_compile(*args, **kwargs):
+        raise AssertionError("changing packed extents must not invoke cute.compile")
+
+    try:
+        for shape_index, (seqlen_q, seqlen_k) in enumerate(((17, 768), (29, 1024))):
+            index_q = torch.randn((1, seqlen_q, 64, 128), device=device, dtype=torch.bfloat16, generator=generator)
+            weights = torch.randn((1, seqlen_q, 64), device=device, dtype=torch.bfloat16, generator=generator).abs().mul_(0.1)
+            index_k = torch.randn((1, seqlen_k, 128), device=device, dtype=torch.bfloat16, generator=generator)
+            topk_indices = torch.randint(0, seqlen_k, (1, seqlen_q, 512), device=device, dtype=torch.int32, generator=generator)
+            grad_signal = torch.randn((1, seqlen_q, 512), device=device, dtype=torch.float32, generator=generator)
+            d_index_q = torch.full_like(index_q, float("nan"))
+            d_weights = torch.full_like(weights, float("nan"))
+            d_index_k = torch.zeros_like(index_k, dtype=torch.float32)
+            oracle_dq, oracle_dw, oracle_dk = _fp64_oracle(index_q, weights, index_k, grad_signal, topk_indices)
+
+            kernel = module.indexer_backward_sm100(1, seqlen_q, seqlen_k, 64, 128, 512)
+            if shape_index == 0:
+                kernel.gemm_only(index_q, weights, index_k, d_index_q, d_weights, d_index_k, grad_signal, topk_indices)
+                torch.cuda.synchronize()
+                assert len(module._compile_cache) == 1
+                monkeypatch.setattr(module.cute, "compile", fail_compile)
+
+            graph = torch.cuda.CUDAGraph()
+            try:
+                with torch.cuda.graph(graph):
+                    d_index_q.fill_(float("nan"))
+                    d_weights.fill_(float("nan"))
+                    d_index_k.zero_()
+                    kernel.gemm_only(index_q, weights, index_k, d_index_q, d_weights, d_index_k, grad_signal, topk_indices)
+                for replay_index in range(2):
+                    if replay_index:
+                        # Replay must read the current buffer contents, not a
+                        # value captured when the graph was constructed.
+                        grad_signal.mul_(0.5)
+                    graph.replay()
+                    torch.cuda.synchronize()
+                    for name, actual, expected in (
+                        ("dQ", d_index_q, oracle_dq),
+                        ("dW", d_weights, oracle_dw),
+                        ("dK", d_index_k, oracle_dk),
+                    ):
+                        assert torch.isfinite(actual.float()).all(), f"{name} contains NaN/Inf at Sq={seqlen_q}, Sk={seqlen_k}"
+                        expected_scale = 0.5 if replay_index else 1.0
+                        assert _rms_rel(actual, expected * expected_scale) <= 0.02, f"{name} mismatch at Sq={seqlen_q}, Sk={seqlen_k}"
+                assert len(module._compile_cache) == 1
+            finally:
+                del graph
+    finally:
+        module._compile_cache.clear()
 
 
 @pytest.mark.L1

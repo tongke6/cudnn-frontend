@@ -452,11 +452,9 @@ class IndexerBackward(APIBase):
         self._ensure_support_checked()
         if self._compiled_kernel is not None:
             return
-        # indexer_backward_sm100 returns a closure whose GEMM stage lazy-
-        # compiles on first call. ``grad_scale`` is supplied at execute()
-        # time — passing it to the factory is a no-op now that it's not
-        # part of the cache key, and it's been removed from the factory
-        # signature on both backends.
+        # ``grad_scale`` is supplied at execute() time and does not affect
+        # either backend's compiled kernel. The SM100 factory can compile its
+        # shape-generic GEMM from symbolic tensors at plan time.
         if self.use_v2:
             # SM100-only v2 backend (check_support gated). The
             # d_weights output dtype is a compile-time kernel variant (the
@@ -479,21 +477,25 @@ class IndexerBackward(APIBase):
                     dw_out_dtype=self.dw_desc.dtype,
                 )
             return
-        # Default path: capability from the current device, unchanged from
-        # the pre-v2 code (the v2 branch above never reaches here).
-        major, _ = torch.cuda.get_device_capability()
-        kernel_factory = indexer_backward_sm90 if major == 9 else indexer_backward_sm100
-        self._compiled_kernel = kernel_factory(
-            self.batch,
-            self.seqlen,
-            self.seqlen_k,
-            self.heads,
-            self.head_dim,
-            self.topk,
-            sm_scale=self.sm_scale,
-            block_I=self.block_I,
-            topk_indices_global=self.topk_indices_global,
-        )
+        # Compile against the device captured by this plan, including when
+        # another CUDA device is current in the calling thread.
+        with torch.cuda.device(self.iq_desc.device):
+            major, _ = torch.cuda.get_device_capability()
+            kernel_factory = indexer_backward_sm90 if major == 9 else indexer_backward_sm100
+            compiled_kernel = kernel_factory(
+                self.batch,
+                self.seqlen,
+                self.seqlen_k,
+                self.heads,
+                self.head_dim,
+                self.topk,
+                sm_scale=self.sm_scale,
+                block_I=self.block_I,
+                topk_indices_global=self.topk_indices_global,
+            )
+            if major >= 10:
+                compiled_kernel.precompile()
+            self._compiled_kernel = compiled_kernel
 
     def _check_execute_signature(self, *entries) -> None:
         """Validate runtime tensors against the descriptors captured at
