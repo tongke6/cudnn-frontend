@@ -1,0 +1,19 @@
+test/python/determinism_goldens/README.md
+  s_9b17de1238fe5f::t_dabab6c9eccce2 702-709,711-722,730,735
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4cea8080f78a6e21a3d6fe42d7f0649a24df0161",
+  "prompts": {},
+  "sessions": {
+    "s_9b17de1238fe5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b329-6670-7271-b65e-8467963e5b69",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "童柯 <shunde.csd@antgroup.com>"
+    }
+  }
+}
