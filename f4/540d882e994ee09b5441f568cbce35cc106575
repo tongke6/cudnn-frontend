@@ -1,0 +1,38 @@
+python/cudnn/deepseek_sparse_attention/indexer_backward/indexer_backward_sm90.py
+  s_9b17de1238fe5f::t_1993eb367d001f 148
+  s_9b17de1238fe5f::t_f690c200f4ab8b 154-157,182,1206,1208,1242,1262
+test/python/determinism_goldens/README.md
+  s_9b17de1238fe5f::t_25504e19c07525 703-734
+  s_9b17de1238fe5f::t_072b4e1ce37b77 700-702
+test/python/deepseek_sparse_attention/cutedsl/test_DSA_indexer_backward.py
+  s_9b17de1238fe5f::t_36f721e20c9617 962,964-966,969-971,975-976,978-981
+  s_9b17de1238fe5f::t_c21a5db620d067 934-935,957-958
+  s_9b17de1238fe5f::t_343373230a361e 933
+  s_9b17de1238fe5f::t_cb63b9f0263289 936-938,954-956
+docs/operations/determinism.md
+  s_9b17de1238fe5f::t_321825fd1e53c0 51-52
+docs/operations/sparse_attention/dsa.md
+  s_9b17de1238fe5f::t_9576082850c249 962,984-985
+python/cudnn/deepseek_sparse_attention/indexer_backward/api.py
+  s_9b17de1238fe5f::t_c46ecd4512752f 234-235,241,415,417-418,964
+test/python/determinism_goldens/70c200b13182bbc2/dsa-indexer-sm90-h32-topk512-bfloat16.json
+  s_9b17de1238fe5f::t_702b94892325d9 1-113
+test/python/determinism_goldens/70c200b13182bbc2/dsa-indexer-sm90-h32-topk512-float32.json
+  s_9b17de1238fe5f::t_ea4bd85c5a3cd0 1-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f4540d882e994ee09b5441f568cbce35cc106575",
+  "prompts": {},
+  "sessions": {
+    "s_9b17de1238fe5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b329-6670-7271-b65e-8467963e5b69",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "童柯 <shunde.csd@antgroup.com>"
+    }
+  }
+}
