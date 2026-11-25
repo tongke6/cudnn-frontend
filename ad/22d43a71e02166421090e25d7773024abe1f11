@@ -1,0 +1,54 @@
+python/cudnn/deepseek_sparse_attention/indexer_top_k/api.py
+  s_672d36fb36b210::t_a5d321818e29d6 289,405-406
+  s_672d36fb36b210::t_d77fec9ff211dd 153-154,262,264-268,308-309,319-320,323-324,338-349,366,471-472
+docs/operations/determinism.md
+  s_672d36fb36b210::t_01a0d68be85960 121
+test/python/determinism_goldens/2522623f0f959053/dsa-indexer-top-k-starts-float16.json
+  s_672d36fb36b210::t_8d4f1039539947 1-59
+test/python/determinism_goldens/README.md
+  s_672d36fb36b210::t_d378efeddd205e 4727-4750
+test/python/determinism_goldens/2522623f0f959053/dsa-indexer-top-k-starts-bfloat16.json
+  s_672d36fb36b210::t_8d4f1039539947 1-59
+test/python/determinism_goldens/2522623f0f959053/dsa-indexer-top-k-starts-float32.json
+  s_672d36fb36b210::t_8d4f1039539947 1-59
+test/python/deepseek_sparse_attention/cutedsl/test_DSA_indexer_top_k.py
+  s_672d36fb36b210::t_c026b271919849 1384-1390
+  s_672d36fb36b210::t_5f74262775fdd4 1348-1349
+  s_672d36fb36b210::t_bfec107b8536c9 1328,1330-1347,1350,1355,1357-1370,1373,1382-1383,1391-1397,1399-1423
+  s_672d36fb36b210::t_2101c7b92e0e42 1351-1354,1356,1371-1372,1374-1381,1398
+  s_672d36fb36b210::t_86915e9b599ab0 1329
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_decode_varlen.py
+  s_672d36fb36b210::t_d62a5898e0f826 595
+  s_672d36fb36b210::t_f982ee82c2fbce 539-563,588-593,596-616,706-707,719,754,761-768,841
+  s_672d36fb36b210::t_2c8505f4492239 753,837-838
+docs/operations/sparse_attention/dsa.md
+  s_672d36fb36b210::t_ff359bb65ba649 1234-1240,1249-1250
+test/python/determinism_goldens/2522623f0f959053/dsa-indexer-top-k-zero-scratch-bfloat16.json
+  s_672d36fb36b210::t_2d8371abd86f4c 1-59
+test/python/determinism_goldens/2522623f0f959053/dsa-indexer-top-k-zero-scratch-float16.json
+  s_672d36fb36b210::t_77de9f58c86cb8 1-59
+test/python/determinism_goldens/2522623f0f959053/dsa-indexer-top-k-zero-scratch-float32.json
+  s_672d36fb36b210::t_b06f82b1e771b0 1-59
+test/python/determinism_goldens/53aefe9e8f548195/dsa-indexer-top-k-zero-scratch-bfloat16.json
+  s_672d36fb36b210::t_ae33c60828d4b4 1-59
+test/python/determinism_goldens/53aefe9e8f548195/dsa-indexer-top-k-zero-scratch-float16.json
+  s_672d36fb36b210::t_abbd5bb17fe395 1-59
+test/python/determinism_goldens/53aefe9e8f548195/dsa-indexer-top-k-zero-scratch-float32.json
+  s_672d36fb36b210::t_7fbb9caec9c724 1-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ad22d43a71e02166421090e25d7773024abe1f11",
+  "prompts": {},
+  "sessions": {
+    "s_672d36fb36b210": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21097-8267-7e62-b283-cbad02227a45",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "童柯 <shunde.csd@antgroup.com>"
+    }
+  }
+}
