@@ -1,0 +1,24 @@
+test/python/deepseek_sparse_attention/cutedsl/test_DSA_indexer_top_k.py
+  s_672d36fb36b210::t_c370f61b83b0ee 1282-1283,1291-1293,1296-1297,1303-1309,1321,1328-1329,1331-1334
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_varlen_util.py
+  s_672d36fb36b210::t_6b620b262398f6 1202-1207
+test/python/determinism_goldens/README.md
+  s_672d36fb36b210::t_dfd375e43813b3 4901-4905,4909
+  s_672d36fb36b210::t_b92e5d22a27db9 4906-4908
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "859b1301d443990d2b8a079b723d8812efc36fa5",
+  "prompts": {},
+  "sessions": {
+    "s_672d36fb36b210": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21097-8267-7e62-b283-cbad02227a45",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "童柯 <shunde.csd@antgroup.com>"
+    }
+  }
+}
