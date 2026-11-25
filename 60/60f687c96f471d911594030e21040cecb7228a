@@ -1,0 +1,28 @@
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_decode_varlen.py
+  s_672d36fb36b210::t_03630f3cd3cace 806-814
+test/python/deepseek_sparse_attention/cutedsl/test_DSA_indexer_top_k.py
+  s_672d36fb36b210::t_94196481a6f8ca 821,831
+test/python/determinism_goldens/README.md
+  s_672d36fb36b210::t_27b747ed37923c 4800,4854,4886,4891,4893,4906,4910-4915
+  s_672d36fb36b210::t_2a3735e7995995 4916-4918
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_varlen_util.py
+  s_672d36fb36b210::t_6340a0e713f4ab 1231
+  s_672d36fb36b210::t_46e7655e086bde 1023-1029,1123-1127
+  s_672d36fb36b210::t_e1edcab7fc17fa 1210-1229,1235-1238,1240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6060f687c96f471d911594030e21040cecb7228a",
+  "prompts": {},
+  "sessions": {
+    "s_672d36fb36b210": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21097-8267-7e62-b283-cbad02227a45",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": null
+    }
+  }
+}
