@@ -1,0 +1,32 @@
+docs/operations/determinism.md
+  s_672d36fb36b210::t_65f667f7dda454 130
+test/python/determinism_goldens/README.md
+  s_672d36fb36b210::t_95cc17a946db62 4875-4880,4885
+  s_672d36fb36b210::t_fdfe7132d4b6d0 4872-4874
+  s_672d36fb36b210::t_d9a7404a7e94b7 4881-4884
+test/python/deepseek_sparse_attention/cutedsl/test_DSA_indexer_top_k.py
+  s_672d36fb36b210::t_2298a54877ce80 1329-1378
+  s_672d36fb36b210::t_4980e154d9585d 1328
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_varlen_util.py
+  s_672d36fb36b210::t_3378ce875283a4 639-640,647,655,657,1066-1067,1069-1072,1074-1083,1159-1160,1162,1169-1170,1175,1180,1188,1201,1222-1223,1245-1246
+  s_672d36fb36b210::t_6fb6b134138df1 1019-1020,1068,1084-1098,1100-1140,1142-1150,1152-1158,1161,1163-1165,1168,1171-1173,1181-1187,1189-1195,1197-1199
+  s_672d36fb36b210::t_525005ed726b83 1024,1073
+test/python/determinism_goldens/2522623f0f959053/dsa-indexer-top-k-fp32-coarse-bin-refinement.json
+  s_672d36fb36b210::t_5ea2f68f304f61 1-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e44f2b8644c6eeaf84bfb24510c7115d8a0d1d8f",
+  "prompts": {},
+  "sessions": {
+    "s_672d36fb36b210": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21097-8267-7e62-b283-cbad02227a45",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "童柯 <shunde.csd@antgroup.com>"
+    }
+  }
+}

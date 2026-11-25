@@ -1,0 +1,30 @@
+test/python/determinism_goldens/README.md
+  s_672d36fb36b210::t_e24d7464518b7c 4834-4848
+docs/operations/determinism.md
+  s_672d36fb36b210::t_e24d7464518b7c 130
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_varlen_util.py
+  s_672d36fb36b210::t_19e50bbe0d747c 619-860,923,1224-1265
+  s_672d36fb36b210::t_1c0aacb591bd83 618
+test/python/deepseek_sparse_attention/cutedsl/test_DSA_indexer_top_k.py
+  s_672d36fb36b210::t_8026ad1eb0f987 1301,1311-1312,1323
+  s_672d36fb36b210::t_add22e849cc9f0 1155-1160
+  s_672d36fb36b210::t_6d71ae5750b85a 1286,1291,1294-1295
+  s_672d36fb36b210::t_28bd33533af858 1280-1285,1287-1290,1292-1293,1296-1300,1302-1310,1313-1322,1324-1327
+  s_672d36fb36b210::t_038d99a47166c5 1279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "86828dd5acd9d9c7185897a0aeeeaf08804fa22b",
+  "prompts": {},
+  "sessions": {
+    "s_672d36fb36b210": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21097-8267-7e62-b283-cbad02227a45",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "童柯 <shunde.csd@antgroup.com>"
+    }
+  }
+}
