@@ -1,0 +1,34 @@
+docs/operations/determinism.md
+  s_672d36fb36b210::t_3914798c35b738 130
+test/python/determinism_goldens/2a1ca72e75bdacdf/dsa-indexer-top-k-zero-scratch-bfloat16.json
+  s_672d36fb36b210::t_8adc779bed7299 1-59
+test/python/determinism_goldens/2a1ca72e75bdacdf/dsa-indexer-top-k-zero-scratch-float32.json
+  s_672d36fb36b210::t_8adc779bed7299 1-59
+test/python/determinism_goldens/README.md
+  s_672d36fb36b210::t_572cd325013dcc 4834,4850,4853,4872,4883-4899
+test/python/determinism_goldens/2a1ca72e75bdacdf/dsa-indexer-top-k-fp32-coarse-bin-refinement.json
+  s_672d36fb36b210::t_8adc779bed7299 1-59
+test/python/determinism_goldens/2a1ca72e75bdacdf/dsa-indexer-top-k-zero-scratch-float16.json
+  s_672d36fb36b210::t_8adc779bed7299 1-59
+test/python/determinism_goldens/53aefe9e8f548195/dsa-indexer-top-k-fp32-coarse-bin-refinement.json
+  s_672d36fb36b210::t_8adc779bed7299 1-59
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_decode_varlen.py
+  s_672d36fb36b210::t_5b24abb80a4f2e 616
+  s_672d36fb36b210::t_30163b02ee087c 720,724,729,732,805-818,831,835
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "74f76c9ba581ef8aac2211d5400a3c48cc88af99",
+  "prompts": {},
+  "sessions": {
+    "s_672d36fb36b210": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21097-8267-7e62-b283-cbad02227a45",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "童柯 <shunde.csd@antgroup.com>"
+    }
+  }
+}
