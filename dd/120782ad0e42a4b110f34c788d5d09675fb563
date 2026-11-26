@@ -1,0 +1,28 @@
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_decode_varlen.py
+  s_672d36fb36b210::t_94ef50cbd5344f 823
+  s_672d36fb36b210::t_d043d232b96b1a 138,163,446,802-803,815,819
+test/python/deepseek_sparse_attention/cutedsl/test_DSA_indexer_top_k.py
+  s_672d36fb36b210::t_94ef50cbd5344f 1343-1351
+  s_672d36fb36b210::t_d043d232b96b1a 1342,1352,1354,1358,1369
+test/python/determinism_goldens/README.md
+  s_672d36fb36b210::t_30b052ead4a61c 4974-4988
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_varlen_util.py
+  s_672d36fb36b210::t_ebbbbf9c14715f 1019-1021,1025,1098
+  s_672d36fb36b210::t_d043d232b96b1a 890,1018,1022,1024
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dd120782ad0e42a4b110f34c788d5d09675fb563",
+  "prompts": {},
+  "sessions": {
+    "s_672d36fb36b210": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21097-8267-7e62-b283-cbad02227a45",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "童柯 <shunde.csd@antgroup.com>"
+    }
+  }
+}
