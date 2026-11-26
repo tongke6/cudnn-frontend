@@ -1,0 +1,28 @@
+docs/operations/determinism.md
+  s_672d36fb36b210::t_9df04c49e17093 775-778
+test/python/determinism_goldens/README.md
+  s_672d36fb36b210::t_58ac0a51073619 4952-4953
+  s_672d36fb36b210::t_5a95a49bf77464 4947-4951,4954-4973
+test/python/deepseek_sparse_attention/jax/test_dsa_jax.py
+  s_672d36fb36b210::t_2f8617dab4e05a 118-154
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_decode_varlen.py
+  s_672d36fb36b210::t_2f8617dab4e05a 590-593
+python/cudnn/deepseek_sparse_attention/indexer_top_k/indexer_top_k_varlen_util.py
+  s_672d36fb36b210::t_2f8617dab4e05a 1020-1030,1094,1097-1098,1100,1102,1261-1263,1268,1272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8e3d43af6530153c96a6e9accdcc1a17eb793374",
+  "prompts": {},
+  "sessions": {
+    "s_672d36fb36b210": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21097-8267-7e62-b283-cbad02227a45",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "童柯 <shunde.csd@antgroup.com>"
+    }
+  }
+}
